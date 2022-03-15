@@ -40,49 +40,66 @@ func main() {
 		panic(err)
 	}
 
-	getApprovals := func(number int) int {
-		count := 0
-		reviews, _, _ := client.PullRequests.ListReviews(ctx, "dotnet", "runtime", number, &github.ListOptions{})
+	org := "dotnet"
+	repo := "sdk"
+	getApprovals := func(number int, headSha string) (totalCount, lastPushCount int) {
+		reviews, _, _ := client.PullRequests.ListReviews(ctx, org, repo, number, &github.ListOptions{})
 		for _, review := range reviews {
 			if review.State != nil && *review.State == "APPROVED" {
-				count++
+				totalCount++
+				if review.CommitID != nil && *review.CommitID == headSha {
+					lastPushCount++
+				}
 			}
 		}
 
-		return count
+		return
 	}
 
 	twoOrMore := 0
-	oneOrLess := 0
+	exactlyOne := 0
+	lastPushTwoOrMore := 0
+	lastPushExactlyOne := 0
 	page := 0
-	for twoOrMore+oneOrLess < 100 {
+	prCount := 0
+	for prCount < 1000 {
 		options := github.PullRequestListOptions{
 			State:     "all",
 			Direction: "desc",
 		}
 		options.Page = page
 
-		prs, _, err := client.PullRequests.List(ctx, "dotnet", "runtime", &options)
+		prs, _, err := client.PullRequests.List(ctx, org, repo, &options)
 		if err != nil {
 			panic(err)
 		}
 
 		for _, pr := range prs {
 			if pr.MergedAt != nil {
-				count := getApprovals(*pr.Number)
-				fmt.Printf("%d %s\n", count, *pr.HTMLURL)
+				headSha := pr.Head.SHA
+				count, lastPushCount := getApprovals(*pr.Number, *headSha)
+				fmt.Printf("%d %d %s\n", count, lastPushCount, *pr.HTMLURL)
 				if count >= 2 {
 					twoOrMore++
-				} else {
-					oneOrLess++
+				} else if count == 1 {
+					exactlyOne++
 				}
+
+				if lastPushCount >= 2 {
+					lastPushTwoOrMore++
+				} else if lastPushCount == 1 {
+					lastPushExactlyOne++
+				}
+
+				prCount++
 			}
 		}
 
 		page++
+		fmt.Printf("2+ approvals: %d\n", twoOrMore)
+		fmt.Printf("2+ approvals last push: %d\n", lastPushTwoOrMore)
+		fmt.Printf("1 approval: %d\n", exactlyOne)
+		fmt.Printf("1 approval last push: %d\n", lastPushExactlyOne)
+		fmt.Printf("Total PRs: %d\n", prCount)
 	}
-
-	fmt.Printf("2 or more approvals: %d\n", twoOrMore)
-	fmt.Printf("1 or less approvals: %d\n", oneOrLess)
-	fmt.Printf("Total PRs: %d\n", twoOrMore+oneOrLess)
 }
