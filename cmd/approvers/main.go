@@ -33,15 +33,13 @@ func CreateClient(ctx context.Context) (*github.Client, error) {
 	return client, nil
 }
 
-func main() {
+func getData(org, repo string) {
 	ctx := context.Background()
 	client, err := CreateClient(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	org := "dotnet"
-	repo := "sdk"
 	getApprovals := func(number int, headSha string) (totalCount, lastPushCount int) {
 		reviews, _, _ := client.PullRequests.ListReviews(ctx, org, repo, number, &github.ListOptions{})
 		for _, review := range reviews {
@@ -62,7 +60,7 @@ func main() {
 	lastPushExactlyOne := 0
 	page := 0
 	prCount := 0
-	for prCount < 1000 {
+	for prCount < 500 {
 		options := github.PullRequestListOptions{
 			State:     "all",
 			Direction: "desc",
@@ -78,6 +76,7 @@ func main() {
 			if pr.MergedAt != nil {
 				headSha := pr.Head.SHA
 				count, lastPushCount := getApprovals(*pr.Number, *headSha)
+
 				fmt.Printf("%d %d %s\n", count, lastPushCount, *pr.HTMLURL)
 				if count >= 2 {
 					twoOrMore++
@@ -96,10 +95,25 @@ func main() {
 		}
 
 		page++
-		fmt.Printf("2+ approvals: %d\n", twoOrMore)
-		fmt.Printf("2+ approvals last push: %d\n", lastPushTwoOrMore)
-		fmt.Printf("1 approval: %d\n", exactlyOne)
-		fmt.Printf("1 approval last push: %d\n", lastPushExactlyOne)
+
+		getPercent := func(count int) string {
+			p := float32(count) / float32(prCount)
+			p *= 100
+			return fmt.Sprintf("%.1f%%", p)
+		}
+
+		zeroCount := prCount - (exactlyOne + twoOrMore)
+		fmt.Printf("2+ approvals: %d (%s)\n", twoOrMore, getPercent(twoOrMore))
+		fmt.Printf("2+ approvals last push: %d (%s)\n", lastPushTwoOrMore, getPercent(lastPushTwoOrMore))
+		fmt.Printf("1 approval: %d (%s)\n", exactlyOne, getPercent(exactlyOne))
+		fmt.Printf("1 approval last push: %d (%s)\n", lastPushExactlyOne, getPercent(lastPushExactlyOne))
+		fmt.Printf("0 approvals %d (%s)\n", zeroCount, getPercent(zeroCount))
 		fmt.Printf("Total PRs: %d\n", prCount)
 	}
+}
+
+func main() {
+	// getData("azure", "azure-sdk-for-net")
+	// getData("azure", "azure-sdk-for-python")
+	getData("azure", "azure-sdk-for-java")
 }
